@@ -21,46 +21,16 @@ loads those files at start-up and answers queries.
 
 ```mermaid
 flowchart LR
-    subgraph OFF["OFFLINE: scripts/ (run once)"]
-        direction TB
-        IMG["25,000 images<br/>data/mirflickr/"]
-        MP7["MPEG-7 text files<br/>data/mpeg7/"]
-        META["tags, EXIF, licence<br/>+ concept annotations"]
-        B1["build_index.py<br/>Color, LBP, HOG<br/>(8 processes)"]
-        B2["build_index.py<br/>parse EHD, HTD<br/>(HTD z-score)"]
-        B3["build_index.py<br/>SQLite loader"]
-        B4["extract_vgg16.py<br/>VGG16 CNN, resumable"]
-        IMG --> B1
-        IMG --> B4
-        MP7 --> B2
-        META --> B3
+    subgraph OFF["OFFLINE: once"]
+        A["25,000 images<br/>+ tags + MPEG-7 files"] --> B["Extract descriptors<br/>Color, LBP, HOG, EHD, HTD, VGG16"]
+        B --> C["Save to disk<br/>vectors + VP-Trees + SQLite"]
     end
-
-    subgraph ART["artifacts/ (saved to disk)"]
-        direction TB
-        FEAT["descriptor matrices<br/>features_*.npy, vgg16.npy"]
-        TREES["13 VP-Trees<br/>vptree_descriptor_metric.joblib"]
-        DB["cbir.sqlite<br/>paths, tags, metadata, labels"]
-        MAN["manifest.json + stats.json<br/>parameters, distance scales"]
+    subgraph ON["ONLINE: each search"]
+        D["Query<br/>image and/or keywords"] --> E["Describe the query<br/>same method as offline"]
+        E --> F["k-NN search<br/>VP-Tree or brute force"]
+        F --> G["Most similar images<br/>sorted by distance"]
     end
-
-    subgraph ON["ONLINE: backend/ + frontend/"]
-        direction TB
-        API["FastAPI server<br/>loads all artifacts once"]
-        WEB["Web client<br/>index.html, app.js"]
-        API <-->|"JSON"| WEB
-    end
-
-    B1 --> FEAT
-    B2 --> FEAT
-    B4 --> FEAT
-    FEAT --> TREES
-    B3 --> DB
-    B1 --> MAN
-    FEAT --> API
-    TREES --> API
-    DB --> API
-    MAN --> API
+    C --> F
 ```
 
 The images themselves never move. They stay in their folder and the server
@@ -68,43 +38,22 @@ serves them under `/images/...`. The database only stores their path.
 
 ---
 
-## 2. How a search happens, step by step
+## 2. How a search happens
 
-```mermaid
-flowchart TD
-    UI["Browser: the user picks keywords, a query image,<br/>descriptors with metric and weight, index type, K, fuzziness"]
-    UI -->|"POST /api/search (JSON)<br/>or /api/search/upload (file + JSON)"| API["FastAPI: backend/main.py"]
-
-    API --> KW{"Keywords?"}
-    KW -->|yes| FZ["1. Typo tolerance (rapidfuzz)<br/>each keyword is expanded to close tags<br/>e.g. sunst becomes sunset"]
-    FZ --> SQL["2. SQLite tag index<br/>AND / OR gives the matching image ids"]
-    KW -->|no| Q
-    SQL --> Q{"Query image?"}
-
-    Q -->|"none"| KONLY["Keyword-only search:<br/>rank by number of matched keywords"]
-    Q -->|"database id<br/>or clicked result"| READ["3a. Read its precomputed vectors<br/>(one row of each descriptor matrix)"]
-    Q -->|"uploaded file"| COMP["3b. Decode the image and compute<br/>Color, LBP, HOG, VGG16 with the same<br/>parameters as offline (manifest.json)"]
-
-    READ --> ROUTE{"4. Choose the search"}
-    COMP --> ROUTE
-    ROUTE -->|"keywords + image"| SUB["Brute force on the<br/>keyword-filtered images only"]
-    ROUTE -->|"1 descriptor + VP-Tree"| VP["VP-Tree k-NN search<br/>(exact, skips subtrees)"]
-    ROUTE -->|"1 descriptor + brute force"| BF["Distance to all 25,000 images"]
-    ROUTE -->|"several + VP-Tree"| VPC["Each tree returns max(10K, 200) candidates,<br/>then the union is re-ranked with D"]
-    ROUTE -->|"several + brute force"| BFC["Combined distance D<br/>over all 25,000 images"]
-
-    SUB --> EXC["5. Remove the query image itself"]
-    VP --> EXC
-    BF --> EXC
-    VPC --> EXC
-    BFC --> EXC
-    EXC --> FUZ["6. Fuzziness filter:<br/>keep result i if (d_i - d_1) / (d_K - d_1) <= f"]
-
-    FUZ --> RESP["7. JSON response: results (url, distance, tags),<br/>search time, index used, distance computations, count"]
-    KONLY --> RESP
-    RESP --> SHOW["Browser shows the query and the results,<br/>most similar first"]
-    SHOW -.->|"click a result: it becomes the new query"| UI
-```
+1. **Keywords (optional).** Each keyword is expanded to close tags (typo
+   tolerance with rapidfuzz, e.g. `sunst` becomes `sunset`), then the SQLite tag
+   index returns the matching images (AND / OR).
+2. **Query image.** For a database image or a clicked result, its precomputed
+   vectors are read. For an uploaded image, the descriptors are computed with
+   the same parameters as offline (`manifest.json`).
+3. **Search.** With one descriptor: VP-Tree or brute force over the 25,000
+   images. With several: the combined distance `D` below (VP-Tree mode
+   re-ranks the candidates of each tree). With keywords and an image: brute
+   force on the keyword-filtered images only.
+4. **Filter and answer.** The query image itself is removed, the fuzziness
+   filter is applied, and the server returns JSON (image URLs, distances, tags,
+   search time, index used, distance computations). The browser shows the
+   results, and clicking one starts a new search with it as the query.
 
 **Combined distance D.** When several descriptors are ticked, each distance
 `d_i` is divided by that descriptor's scale `s_i`, the median distance between
@@ -144,21 +93,6 @@ images.
 bound is larger than `tau`, the distance of the K-th best result found so far,
 nothing in that child can enter the top K, and the whole subtree is skipped.
 
-```mermaid
-flowchart TD
-    START["Push the root (lower bound 0)<br/>tau = infinity"] --> EMPTY{"Stack empty?"}
-    EMPTY -->|yes| DONE["Return the K best, sorted"]
-    EMPTY -->|no| POP["Pop a node and its lower bound"]
-    POP --> PRUNE{"lower bound > tau?"}
-    PRUNE -->|"yes: cannot improve the top K"| EMPTY
-    PRUNE -->|no| LEAF{"Leaf?"}
-    LEAF -->|yes| SCAN["Compute the distances to the points<br/>of the bucket (one vectorized call),<br/>update the top K and tau"]
-    SCAN --> EMPTY
-    LEAF -->|no| DQ["dq = d(q, vp)<br/>vp itself is a candidate"]
-    DQ --> BOUND["For each child with range [lo, hi]:<br/>bound = max(lo - dq, dq - hi, 0)"]
-    BOUND --> PUSH["Push the child only if bound <= tau<br/>(the nearer child is explored first)"]
-    PUSH --> EMPTY
-```
 
 The search is **exact**: it returns exactly the brute-force results, which
 `tests/test_vptree.py` and the evaluation check. One tree is built per
