@@ -16,6 +16,9 @@ extract_subset.py
 artifacts/
 artifacts_*/
 
+# Internal notes for writing the report (the final report is Rapport_CBIR.pdf)
+REPORT_GUIDE.md
+
 # Logs
 *.log
 

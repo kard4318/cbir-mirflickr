@@ -11,6 +11,12 @@ MIRFLICKR-25k, built **without Elasticsearch**:
 - keyword search with **typo tolerance**, weighted **combination of descriptors**,
   a **fuzziness** control, and an **evaluation** module (precision, recall, mAP, timings).
 
+## Report and demo video
+
+- **Report:** [`Rapport_CBIR.pdf`](Rapport_CBIR.pdf) in this repository.
+- **Report and demo video:** both are also in this
+  [Google Drive folder](https://drive.google.com/drive/folders/132Vgb58TXujJgaFza0wToS9FZs_BcPNh?usp=sharing).
+
 ---
 
 ## 1. How it works
