@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CBIR Image Search</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+  <h1>CBIR <span>· MIRFLICKR-25k image search</span></h1>
+  <div id="db-info" class="muted"></div>
+</header>
+
+<main>
+  <aside id="panel">
+    <form id="search-form">
+      <section>
+        <h2>Keywords</h2>
+        <input id="keywords" type="text" list="tag-suggestions" placeholder="e.g. sunset, beach" autocomplete="off">
+        <datalist id="tag-suggestions"></datalist>
+        <div class="row small">
+          <label><input type="radio" name="kwmode" value="or" checked> any (OR)</label>
+          <label><input type="radio" name="kwmode" value="and"> all (AND)</label>
+        </div>
+        <p class="hint">Comma-separated. With an image query, keywords filter the candidates.</p>
+      </section>
+
+      <section>
+        <h2>Query image</h2>
+        <div id="query-preview" class="query-preview empty">No image selected</div>
+        <div class="row">
+          <input id="image-id" type="number" min="1" placeholder="Image id">
+          <button type="button" id="btn-use-id">Use id</button>
+        </div>
+        <div class="row">
+          <label class="file-btn">Upload…<input id="upload" type="file" accept="image/*"></label>
+          <button type="button" id="btn-clear-image" class="ghost">Clear</button>
+        </div>
+      </section>
+
+      <section>
+        <h2>Descriptors</h2>
+        <table id="descriptor-table">
+          <thead><tr><th></th><th>Descriptor</th><th>Metric</th><th>Weight</th></tr></thead>
+          <tbody></tbody>
+        </table>
+        <p class="hint" id="upload-hint" hidden>EHD and HTD are provided MPEG-7 descriptors and are not available for uploaded images.</p>
+      </section>
+
+      <section>
+        <h2>Fuzziness <output id="fuzz-value">100%</output></h2>
+        <input id="fuzziness" type="range" min="0" max="100" step="5" value="100">
+        <p class="hint" id="fuzz-hint"></p>
+      </section>
+
+      <section>
+        <h2>Index</h2>
+        <div class="row small">
+          <label><input type="radio" name="index" value="vptree" checked> VP-Tree</label>
+          <label><input type="radio" name="index" value="bruteforce"> Brute force</label>
+        </div>
+        <div class="row small">
+          <label>Results <select id="k"><option>10</option><option selected>20</option><option>50</option><option>100</option></select></label>
+        </div>
+      </section>
+
+      <button type="submit" id="btn-search" class="primary">Search</button>
+      <p id="error" class="error" hidden></p>
+    </form>
+  </aside>
+
+  <section id="results-area">
+    <div id="status" class="status" hidden></div>
+    <div id="query-banner" hidden></div>
+    <h2 id="results-title">Pick a query image</h2>
+    <div id="grid" class="grid"></div>
+  </section>
+</main>
+
+<div id="tooltip" class="tooltip" hidden></div>
+<script src="app.js"></script>
+</body>
+</html>
