@@ -13,28 +13,22 @@ MIRFLICKR-25k, built **without Elasticsearch**:
 
 ---
 
-## 1. Architecture
-
-The work is split into two phases, as in the course: an **offline** phase that
-computes everything once and saves it to disk, and an **online** phase that
-loads those files at start-up and answers queries.
+## 1. How it works
 
 ```mermaid
 flowchart LR
-    subgraph OFF["OFFLINE: once"]
-        A["25,000 images<br/>+ tags + MPEG-7 files"] --> B["Extract descriptors<br/>Color, LBP, HOG, EHD, HTD, VGG16"]
-        B --> C["Save to disk<br/>vectors + VP-Trees + SQLite"]
-    end
-    subgraph ON["ONLINE: each search"]
-        D["Query<br/>image and/or keywords"] --> E["Describe the query<br/>same method as offline"]
-        E --> F["k-NN search<br/>VP-Tree or brute force"]
-        F --> G["Most similar images<br/>sorted by distance"]
-    end
-    C --> F
+    A["Query<br/>image and/or keywords"] --> B["Describe the image<br/>Color, LBP, HOG, EHD, HTD, VGG16"]
+    B --> C["Compare with the descriptors<br/>of the 25,000 images"]
+    C --> D["VP-Tree skips the far images<br/>brute force checks them all"]
+    D --> E["Rank by distance<br/>+ fuzziness filter"]
+    E --> F["Most similar images<br/>shown in the browser"]
+    F -.->|"click a result"| A
 ```
 
-The images themselves never move. They stay in their folder and the server
-serves them under `/images/...`. The database only stores their path.
+The descriptors of the 25,000 images are computed in advance and saved to disk
+with their VP-Trees and an SQLite database (tags, paths). A search only has to
+describe the query and compare it with what is already stored. The images stay
+in their folder, and the server serves them under `/images/...`.
 
 ---
 
